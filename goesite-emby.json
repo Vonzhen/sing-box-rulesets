@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "rules": [
+    {
+      "domain_suffix": [
+        "candytallymovie.vip",
+        "ask.ash.yt",
+        "tv.ash.yt",
+        "cn2gias.uk"
+      ]
+    }
+  ]
+}
