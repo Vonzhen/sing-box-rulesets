@@ -16,10 +16,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2️⃣ 安装 sing-box v1.11.0 并校验 SHA256
-      - name: Install sing-box v1.11.0
+      # 2️⃣ 安装 sing-box v1.11.4 并校验 SHA256
+      - name: Install sing-box v1.11.4
         run: |
-          SB_VER=1.11.0
+          SB_VER=1.11.4
           URL="https://github.com/SagerNet/sing-box/releases/download/v${SB_VER}/sing-box-${SB_VER}-linux-amd64.tar.gz"
           SHA256_EXPECTED="f0b6c2e2e1f5d06c9e4d9e71e2f2a11e6a07e2f4b8e5c9d0e3c3c6b1a2b4c3d5" # 需要根据官方 release 填写
           
