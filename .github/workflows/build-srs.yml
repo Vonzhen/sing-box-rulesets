@@ -11,11 +11,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ 拉取代码
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ 安装 sing-box 1.12.1
       - name: Install sing-box
         run: |
           SB_VER=1.12.1
@@ -25,13 +23,12 @@ jobs:
           chmod +x sing-box-${SB_VER}-linux-amd64/sing-box
           mv sing-box-${SB_VER}-linux-amd64/sing-box ./sing-box
 
-      # 3️⃣ 调试：确认版本
+      # ✅ 调试版本输出
       - name: Check sing-box version
         run: |
-          ./sing-box --version
+          ./sing-box version
           ls -l ./sing-box
 
-      # 4️⃣ 编译 JSON → SRS
       - name: Compile json → srs
         run: |
           mkdir -p rules
@@ -44,7 +41,6 @@ jobs:
           echo "Files in rules directory:"
           ls -l rules/
 
-      # 5️⃣ 只有 srs 变化才提交
       - name: Commit srs if changed
         run: |
           echo "Files in rules before commit:"
