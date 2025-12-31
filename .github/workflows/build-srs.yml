@@ -14,40 +14,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 安装最新 sing-box
-      - name: Install latest sing-box
+      # 安装 sing-box（固定版本，兼容性高）
+      - name: Install sing-box
         run: |
-          # 获取最新 release 的 tag 名称
-          LATEST_TAG=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest \
-            | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
-          echo "Latest sing-box version: $LATEST_TAG"
-
-          # 下载对应版本的 Linux AMD64 tar.gz
+          SB_VER=1.12.1
           curl -L -o sing-box.tar.gz \
-            https://github.com/SagerNet/sing-box/releases/download/v${LATEST_TAG}/sing-box-${LATEST_TAG}-linux-amd64.tar.gz
-          
+            https://github.com/SagerNet/sing-box/releases/download/v${SB_VER}/sing-box-${SB_VER}-linux-amd64.tar.gz
           tar -xzf sing-box.tar.gz
-          sudo mv sing-box-${LATEST_TAG}-linux-amd64/sing-box /usr/local/bin/
+          sudo mv sing-box-${SB_VER}-linux-amd64/sing-box /usr/local/bin/
           chmod +x /usr/local/bin/sing-box
 
-      # 校验 + 编译
-      - name: Validate & compile json → srs
+      # 编译 JSON → SRS（compile 自带校验，不用 --check）
+      - name: Compile json → srs
         run: |
           mkdir -p rules
           for file in rules-src/*.json; do
             name=$(basename "$file" .json)
 
-            echo "Validating $file"
-            sing-box rule-set compile --check "$file"
-
-            echo "Compiling $name.srs"
+            echo "Compiling $file → $name.srs"
             sing-box rule-set compile \
               --format binary \
               --output "rules/$name.srs" \
               "$file"
           done
 
-      # 只有 srs 变化才 commit
+      # 只有 srs 变化才提交
       - name: Commit srs if changed
         run: |
           if git diff --quiet rules; then
