@@ -16,29 +16,29 @@ jobs:
 
       - name: Install sing-box
         run: |
-          SB_VER=1.9.3
+          SB_VER=1.12.14
           curl -L -o sing-box.tar.gz \
             https://github.com/SagerNet/sing-box/releases/download/v${SB_VER}/sing-box-${SB_VER}-linux-amd64.tar.gz
           tar -xzf sing-box.tar.gz
           sudo mv sing-box-${SB_VER}-linux-amd64/sing-box /usr/local/bin/
           chmod +x /usr/local/bin/sing-box
 
-      - name: Validate & compile json → srs
+      # 校验 + 编译（compile 本身就是校验）
+      - name: Compile json → srs
         run: |
           mkdir -p rules
+
           for file in rules-src/*.json; do
             name=$(basename "$file" .json)
 
-            echo "Validating $file"
-            sing-box rule-set compile --check "$file"
-
-            echo "Compiling $name.srs"
+            echo "Compiling $file → $name.srs"
             sing-box rule-set compile \
               --format binary \
               --output "rules/$name.srs" \
               "$file"
           done
 
+      # 只有 srs 变化才提交
       - name: Commit srs if changed
         run: |
           if git diff --quiet rules; then
