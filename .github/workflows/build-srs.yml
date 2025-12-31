@@ -11,9 +11,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ 拉取代码
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2️⃣ 安装 sing-box 1.12.1
       - name: Install sing-box
         run: |
           SB_VER=1.12.1
@@ -23,15 +25,17 @@ jobs:
           chmod +x sing-box-${SB_VER}-linux-amd64/sing-box
           mv sing-box-${SB_VER}-linux-amd64/sing-box ./sing-box
 
-      # ✅ 调试版本输出
+      # 3️⃣ 调试版本输出
       - name: Check sing-box version
         run: |
           ./sing-box version
           ls -l ./sing-box
 
+      # 4️⃣ 清空旧 rules 目录并生成 srs
       - name: Compile json → srs
         run: |
           mkdir -p rules
+          rm -f rules/*.srs
           for file in rules-src/*.json; do
             name=$(basename "$file" .json)
             echo "Compiling $file → rules/$name.srs"
@@ -39,18 +43,18 @@ jobs:
           done
 
           echo "Files in rules directory:"
-          ls -l rules/
+          ls -lh rules/
+          echo "Hex preview of each srs file:"
+          for f in rules/*.srs; do
+            echo "---- $f ----"
+            hexdump -C "$f" | head
+          done
 
-      - name: Commit srs if changed
+      # 5️⃣ 强制 commit 更新
+      - name: Commit srs
         run: |
-          echo "Files in rules before commit:"
-          ls -l rules/
-          if git diff --quiet rules; then
-            echo "No srs changes, skip commit"
-          else
-            git config user.name "github-actions"
-            git config user.email "github-actions@github.com"
-            git add rules/*.srs
-            git commit -m "build: update rule-set srs"
-            git push
-          fi
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add rules/*.srs
+          git commit -m "build: update rule-set srs" || echo "No changes to commit"
+          git push || echo "Nothing to push"
