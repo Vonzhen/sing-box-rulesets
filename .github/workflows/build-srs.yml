@@ -1,91 +1,68 @@
-name: Build Sing-Box Rules
+name: Compile sing-box Rules (v3, Safe & Auto SHA256)
+
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: "30 22 * * *"  # 每天 6:30 AM UTC+8
   push:
-    branches:
-      - master
+    branches: [ "main" ]
+    paths:
+      - 'rules/*.json'
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:
 
-      # 1️⃣ Checkout 仓库
-      - name: Checkout repo
+    steps:
+      # 1️⃣ 拉取代码
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2️⃣ 安装 sing-box v1.11.4
-      - name: Setup sing-box v1.11.4
+      # 2️⃣ 安装 sing-box v1.11.0 并校验 SHA256
+      - name: Install sing-box v1.11.0
         run: |
-          wget https://github.com/SagerNet/sing-box/releases/download/v1.11.4/sing-box-1.11.4-linux-amd64.tar.gz
-          tar zxvf sing-box-1.11.4-linux-amd64.tar.gz
-          mv sing-box-1.11.4-linux-amd64/sing-box ./
+          SB_VER=1.11.0
+          URL="https://github.com/SagerNet/sing-box/releases/download/v${SB_VER}/sing-box-${SB_VER}-linux-amd64.tar.gz"
+          SHA256_EXPECTED="f0b6c2e2e1f5d06c9e4d9e71e2f2a11e6a07e2f4b8e5c9d0e3c3c6b1a2b4c3d5" # 需要根据官方 release 填写
+          
+          curl -Lo sing-box.tar.gz "$URL"
+          SHA256_ACTUAL=$(sha256sum sing-box.tar.gz | awk '{print $1}')
+          if [ "$SHA256_ACTUAL" != "$SHA256_EXPECTED" ]; then
+            echo "ERROR: SHA256 mismatch for sing-box.tar.gz"
+            exit 1
+          fi
+          
+          tar -xzf sing-box.tar.gz
+          mv sing-box-*/sing-box .
           chmod +x sing-box
+          ./sing-box version
 
-      # 3️⃣ 安装 Go（供官方 converter 使用）
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-
-      # 4️⃣ Compile JSON → srs（兼容 1.11.4）
-      - name: Compile JSON rules to srs
+      # 3️⃣ 检查 JSON 文件存在
+      - name: Check JSON rules
         run: |
-          mkdir -p sing-rule
-          for file in rules-src/*.json; do
-            name=$(basename "$file" .json)
-            echo "Compiling $file → sing-rule/$name.srs"
-            ./sing-box rule-set compile --output "sing-rule/$name.srs" "$file"
+          shopt -s nullglob
+          json_files=(rules/*.json)
+          if [ ${#json_files[@]} -eq 0 ]; then
+            echo "No JSON rules found in rules/"
+            exit 1
+          fi
+          echo "Found ${#json_files[@]} JSON rules."
+
+      # 4️⃣ 编译规则并生成 SHA256 校验
+      - name: Compile rules → srs + SHA256
+        run: |
+          mkdir -p srs
+          for file in rules/*.json; do
+            filename=$(basename "$file" .json)
+            ./sing-box rule-set compile "$file" -o "srs/${filename}.srs"
+            sha256sum "srs/${filename}.srs" > "srs/${filename}.srs.sha256sum"
+            echo "Compiled $filename.json → $filename.srs (+ SHA256)"
           done
+          echo "Files in srs/:"
+          ls -lh srs/
 
-      # 5️⃣ 下载 geosite/geoip 数据并生成 meta-rule
-      - name: Download geo data
+      # 5️⃣ Commit & Push 更新
+      - name: Commit & Push
         run: |
-          wget -O geoip.dat https://github.com/Loyalsoldier/geoip/raw/release/geoip.dat
-          wget -O geosite.dat https://github.com/Loyalsoldier/geoip/raw/release/geosite.dat
-
-      - name: Convert geo to meta-rule-set
-        run: |
-          mkdir -p meta-rule/geo/geosite meta-rule/geo/geoip
-          git clone https://github.com/MetaCubeX/meta-rules-converter convert
-          cd convert
-          go run ./ geosite -f ../geosite.dat -o ../meta-rule/geo/geosite
-          go run ./ geoip -f ../geoip.dat -o ../meta-rule/geo/geoip
-
-      # 6️⃣ 推送 sing-rule / meta-rule 分支
-      - name: Push sing-rule branch
-        run: |
-          cd sing-rule
-          git init
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b sing
-          git add .
-          git commit -m "Update sing-rule srs files"
-          git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
-          git push -f -u origin sing
-
-      - name: Push meta-rule branch
-        run: |
-          cd meta-rule
-          git init
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b meta
-          git add .
-          git commit -m "Update meta-rule files"
-          git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
-          git push -f -u origin meta
-
-      # 7️⃣ 创建 Release
-      - name: Create Release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          release_name: Release $(date +"%Y-%m-%d %H:%M")
-          tag: latest
-          file_glob: true
-          overwrite: true
-          file: ./sing-rule/* ./meta-rule/*
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add srs/*.srs srs/*.srs.sha256sum
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-compile srs v3 + SHA256 [skip ci]" && git push)
