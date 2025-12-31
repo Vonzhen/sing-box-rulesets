@@ -1,70 +1,61 @@
-name: Build sing-box rule-set
-
-# 手动触发、定时和 master 推送触发
+name: Build Sing-Box Rules
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 22 * * *" # 每天 6:30 AM UTC+8
+    - cron: "30 22 * * *"  # 每天 6:30 AM UTC+8
   push:
     branches:
       - master
-    paths-ignore:
-      - "**/README.md"
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      # 1. Checkout 自己仓库
-      - name: Checkout repository
+
+      # 1️⃣ Checkout 仓库
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 2. Checkout 官方转换工具
-      - name: Checkout meta-rules-converter
-        uses: actions/checkout@v4
-        with:
-          repository: MetaCubeX/meta-rules-converter
-          path: convert
+      # 2️⃣ 安装 sing-box v1.11.4
+      - name: Setup sing-box v1.11.4
+        run: |
+          wget https://github.com/SagerNet/sing-box/releases/download/v1.11.4/sing-box-1.11.4-linux-amd64.tar.gz
+          tar zxvf sing-box-1.11.4-linux-amd64.tar.gz
+          mv sing-box-1.11.4-linux-amd64/sing-box ./
+          chmod +x sing-box
 
-      # 3. 安装 Go
+      # 3️⃣ 安装 Go（供官方 converter 使用）
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: '1.22'
 
-      # 4. 检查 JSON 是否有变化
-      - name: Check JSON changes
-        id: check_json
+      # 4️⃣ Compile JSON → srs（兼容 1.11.4）
+      - name: Compile JSON rules to srs
         run: |
           mkdir -p sing-rule
-          CHANGED=0
           for file in rules-src/*.json; do
             name=$(basename "$file" .json)
-            OUTFILE="sing-rule/$name.srs"
-            if [ ! -f "$OUTFILE" ] || ! cmp -s "$file" "$OUTFILE"; then
-              echo "JSON changed: $file"
-              CHANGED=1
-            fi
+            echo "Compiling $file → sing-rule/$name.srs"
+            ./sing-box rule-set compile --output "sing-rule/$name.srs" "$file"
           done
-          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
 
-      # 5. 编译 srs 文件（只有 JSON 有变化才执行）
-      - name: Compile JSON to srs
-        if: steps.check_json.outputs.changed == '1'
+      # 5️⃣ 下载 geosite/geoip 数据并生成 meta-rule
+      - name: Download geo data
         run: |
-          mkdir -p sing-rule
-          cd convert
-          for file in ../rules-src/*.json; do
-            name=$(basename "$file" .json)
-            echo "Converting $file → sing-rule/$name.srs"
-            go run ./ geosite -f "$file" -o "../sing-rule/$name" -t sing-box
-          done
-          cd ..
+          wget -O geoip.dat https://github.com/Loyalsoldier/geoip/raw/release/geoip.dat
+          wget -O geosite.dat https://github.com/Loyalsoldier/geoip/raw/release/geosite.dat
 
-      # 6. 提交并推送 sing-rule 分支
-      - name: Commit sing-rule
-        if: steps.check_json.outputs.changed == '1'
+      - name: Convert geo to meta-rule-set
+        run: |
+          mkdir -p meta-rule/geo/geosite meta-rule/geo/geoip
+          git clone https://github.com/MetaCubeX/meta-rules-converter convert
+          cd convert
+          go run ./ geosite -f ../geosite.dat -o ../meta-rule/geo/geosite
+          go run ./ geoip -f ../geoip.dat -o ../meta-rule/geo/geoip
+
+      # 6️⃣ 推送 sing-rule / meta-rule 分支
+      - name: Push sing-rule branch
         run: |
           cd sing-rule
           git init
@@ -72,6 +63,29 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b sing
           git add .
-          git commit -m "Update rule-set on $(date +'%Y-%m-%d %H:%M')"
-          git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
+          git commit -m "Update sing-rule srs files"
+          git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
           git push -f -u origin sing
+
+      - name: Push meta-rule branch
+        run: |
+          cd meta-rule
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b meta
+          git add .
+          git commit -m "Update meta-rule files"
+          git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git push -f -u origin meta
+
+      # 7️⃣ 创建 Release
+      - name: Create Release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          release_name: Release $(date +"%Y-%m-%d %H:%M")
+          tag: latest
+          file_glob: true
+          overwrite: true
+          file: ./sing-rule/* ./meta-rule/*
