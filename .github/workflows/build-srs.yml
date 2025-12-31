@@ -14,7 +14,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 安装 sing-box（固定版本）
       - name: Install sing-box
         run: |
           SB_VER=1.12.1
@@ -24,20 +23,15 @@ jobs:
           sudo mv sing-box-${SB_VER}-linux-amd64/sing-box /usr/local/bin/
           chmod +x /usr/local/bin/sing-box
 
-      # 编译 JSON → SRS（不带 --format 和 --check）
       - name: Compile json → srs
         run: |
           mkdir -p rules
           for file in rules-src/*.json; do
             name=$(basename "$file" .json)
-
             echo "Compiling $file → $name.srs"
-            sing-box rule-set compile \
-              -o "rules/$name.srs" \
-              "$file"
+            sing-box rule-set compile -o "rules/$name.srs" "$file"
           done
 
-      # 只有 srs 变化才提交
       - name: Commit srs if changed
         run: |
           if git diff --quiet rules; then
@@ -48,3 +42,4 @@ jobs:
             git add rules/*.srs
             git commit -m "build: update rule-set srs"
             git push
+          fi
