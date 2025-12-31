@@ -1,0 +1,52 @@
+name: Build sing-box rule-set (.srs)
+
+on:
+  push:
+    paths:
+      - "rules-src/**/*.json"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install sing-box
+        run: |
+          SB_VER=1.9.3
+          curl -L -o sing-box.tar.gz \
+            https://github.com/SagerNet/sing-box/releases/download/v${SB_VER}/sing-box-${SB_VER}-linux-amd64.tar.gz
+          tar -xzf sing-box.tar.gz
+          sudo mv sing-box-${SB_VER}-linux-amd64/sing-box /usr/local/bin/
+          chmod +x /usr/local/bin/sing-box
+
+      - name: Validate & compile json → srs
+        run: |
+          mkdir -p rules
+          for file in rules-src/*.json; do
+            name=$(basename "$file" .json)
+
+            echo "Validating $file"
+            sing-box rule-set compile --check "$file"
+
+            echo "Compiling $name.srs"
+            sing-box rule-set compile \
+              --format binary \
+              --output "rules/$name.srs" \
+              "$file"
+          done
+
+      - name: Commit srs if changed
+        run: |
+          if git diff --quiet rules; then
+            echo "No srs changes, skip commit"
+          else
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git add rules/*.srs
+            git commit -m "build: update rule-set srs"
+            git push
+          fi
