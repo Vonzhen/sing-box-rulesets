@@ -1,10 +1,9 @@
-name: Compile sing-box Rules (v3, Safe & Auto SHA256)
+name: Build sing-box rule-set (.srs)
 
 on:
   push:
-    branches: [ "main" ]
     paths:
-      - 'rules/*.json'
+      - "rules-src/**/*.json"
   workflow_dispatch:
 
 jobs:
@@ -13,56 +12,57 @@ jobs:
 
     steps:
       # 1️⃣ 拉取代码
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ 安装 sing-box v1.11.4 并校验 SHA256
-      - name: Install sing-box v1.11.4
+      # 2️⃣ 安装最新稳定版 sing-box
+      - name: Install latest stable sing-box
         run: |
-          SB_VER=1.11.4
-          URL="https://github.com/SagerNet/sing-box/releases/download/v${SB_VER}/sing-box-${SB_VER}-linux-amd64.tar.gz"
-          SHA256_EXPECTED="f0b6c2e2e1f5d06c9e4d9e71e2f2a11e6a07e2f4b8e5c9d0e3c3c6b1a2b4c3d5" # 需要根据官方 release 填写
-          
-          curl -Lo sing-box.tar.gz "$URL"
-          SHA256_ACTUAL=$(sha256sum sing-box.tar.gz | awk '{print $1}')
-          if [ "$SHA256_ACTUAL" != "$SHA256_EXPECTED" ]; then
-            echo "ERROR: SHA256 mismatch for sing-box.tar.gz"
-            exit 1
-          fi
-          
+          echo "Fetching latest stable sing-box release..."
+          SB_VER=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest \
+            | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          echo "Latest sing-box version: $SB_VER"
+
+          echo "Downloading sing-box..."
+          curl -L -o sing-box.tar.gz \
+            https://github.com/SagerNet/sing-box/releases/download/v${SB_VER}/sing-box-${SB_VER}-linux-amd64.tar.gz
           tar -xzf sing-box.tar.gz
-          mv sing-box-*/sing-box .
-          chmod +x sing-box
+          chmod +x sing-box-${SB_VER}-linux-amd64/sing-box
+          mv sing-box-${SB_VER}-linux-amd64/sing-box ./sing-box
+
+      # 3️⃣ 调试版本输出
+      - name: Check sing-box version
+        run: |
           ./sing-box version
+          ls -l ./sing-box
 
-      # 3️⃣ 检查 JSON 文件存在
-      - name: Check JSON rules
+      # 4️⃣ 清空旧 rules 目录并生成 srs
+      - name: Compile json → srs
         run: |
-          shopt -s nullglob
-          json_files=(rules/*.json)
-          if [ ${#json_files[@]} -eq 0 ]; then
-            echo "No JSON rules found in rules/"
-            exit 1
-          fi
-          echo "Found ${#json_files[@]} JSON rules."
-
-      # 4️⃣ 编译规则并生成 SHA256 校验
-      - name: Compile rules → srs + SHA256
-        run: |
-          mkdir -p srs
-          for file in rules/*.json; do
-            filename=$(basename "$file" .json)
-            ./sing-box rule-set compile "$file" -o "srs/${filename}.srs"
-            sha256sum "srs/${filename}.srs" > "srs/${filename}.srs.sha256sum"
-            echo "Compiled $filename.json → $filename.srs (+ SHA256)"
+          mkdir -p rules
+          rm -f rules/*.srs
+          for file in rules-src/*.json; do
+            name=$(basename "$file" .json)
+            echo "Compiling $file → rules/$name.srs"
+            if ! ./sing-box rule-set compile "$file" -o "rules/$name.srs"; then
+              echo "Error compiling $file"
+              exit 1
+            fi
           done
-          echo "Files in srs/:"
-          ls -lh srs/
 
-      # 5️⃣ Commit & Push 更新
-      - name: Commit & Push
+          echo "Files in rules directory:"
+          ls -lh rules/
+          echo "Hex preview of each srs file:"
+          for f in rules/*.srs; do
+            echo "---- $f ----"
+            hexdump -C "$f" | head
+          done
+
+      # 5️⃣ 强制 commit 更新
+      - name: Commit srs
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add srs/*.srs srs/*.srs.sha256sum
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-compile srs v3 + SHA256 [skip ci]" && git push)
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add rules/*.srs
+          git commit -m "build: update rule-set srs" || echo "No changes to commit"
+          git push || echo "Nothing to push"
