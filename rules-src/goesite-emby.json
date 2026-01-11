@@ -2,14 +2,20 @@
   "version": 2,
   "rules": [
     {
-      "domain_suffix": [
+      "domain": [
         "cdn.liminalnet.pro",
         "candytallymovie.vip",
         "ask.ash.yt",
         "tv.ash.yt",
-        "emby.cn2gias.uk",
+        "server1.cn2gias.uk",
         "server2.cn2gias.uk",
-        "emby01.cn2gias.uk"
+        "server3.cn2gias.uk"
+      ],
+      "domain_suffix": [
+        "liminalnet.pro",
+        "candytallymovie.vip",
+        "ash.yt",
+        "cn2gias.uk"
       ]
     }
   ]
