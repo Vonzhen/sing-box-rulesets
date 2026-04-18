@@ -3,12 +3,10 @@
   "rules": [
     {
       "domain": [
-        "seagm.com",
-        "591694.xyz"
+        "seagm.com"
       ],
       "domain_suffix": [
-        "seagm.com",
-        "591694.xyz"
+        "seagm.com"
       ]
     }
   ]
