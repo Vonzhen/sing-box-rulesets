@@ -4,10 +4,12 @@
     {
       "domain": [
         "seagm.com",
-        "sntp.me"
+        "api.linkcube.dev",
+        "sub1.sntp.me"
       ],
       "domain_suffix": [
         "seagm.com",
+        "linkcube.dev",
         "sntp.me"
       ]
     }
